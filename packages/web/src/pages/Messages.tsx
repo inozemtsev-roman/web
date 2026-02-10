@@ -19,7 +19,6 @@ import {
 import { cn } from "@core/utils/cn.ts";
 import { randId } from "@core/utils/randId.ts";
 import { Protobuf, Types } from "@meshtastic/core";
-import { getChannelName } from "@pages/Config/ChannelConfig.tsx";
 import { useNavigate, useParams } from "@tanstack/react-router";
 import { HashIcon, LockIcon, LockOpenIcon } from "lucide-react";
 import {
@@ -30,6 +29,7 @@ import {
   useState,
 } from "react";
 import { useTranslation } from "react-i18next";
+import { getChannelName } from "../components/PageComponents/Channels/Channels.tsx";
 
 type NodeInfoWithUnread = Protobuf.Mesh.NodeInfo & { unreadCount: number };
 
@@ -283,7 +283,7 @@ export const MessagesPage = () => {
             }}
           >
             <Avatar
-              text={node.user?.shortName ?? t("unknown.shortName")}
+              nodeNum={node.num}
               className={cn(hasNodeError(node.num) && "text-red-500")}
               showError={hasNodeError(node.num)}
               showFavorite={node.isFavorite}

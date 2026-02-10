@@ -7,5 +7,6 @@ if (isDev) {
   featureFlags.setOverrides({
     persistNodeDB: true,
     persistMessages: true,
+    persistApp: true,
   });
 }

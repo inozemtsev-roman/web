@@ -1,10 +1,10 @@
 import { DialogManager } from "@components/Dialog/DialogManager.tsx";
 import type { useAppStore, useMessageStore } from "@core/stores";
-import ConfigPage from "@pages/Config/index.tsx";
-import { Dashboard } from "@pages/Dashboard/index.tsx";
+import { Connections } from "@pages/Connections/index.tsx";
 import MapPage from "@pages/Map/index.tsx";
 import MessagesPage from "@pages/Messages.tsx";
 import NodesPage from "@pages/Nodes/index.tsx";
+import ConfigPage from "@pages/Settings/index.tsx";
 import {
   createRootRouteWithContext,
   createRoute,
@@ -30,7 +30,7 @@ export const rootRoute = createRootRouteWithContext<AppContext>()({
 const indexRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/",
-  component: Dashboard,
+  component: Connections,
   loader: () => {
     // Redirect to the broadcast messages page on initial load
     return redirect({ to: "/messages/broadcast/0", replace: true });
@@ -109,9 +109,33 @@ export const mapWithParamsRoute = createRoute({
   // }),
 });
 
-const configRoute = createRoute({
+export const settingsRoute = createRoute({
   getParentRoute: () => rootRoute,
-  path: "/config",
+  path: "/settings",
+  component: ConfigPage,
+  // beforeLoad: () => {
+  //   throw redirect({
+  //     to: "/settings/radio",
+  //     replace: true,
+  //   });
+  // },
+});
+
+export const radioRoute = createRoute({
+  getParentRoute: () => settingsRoute,
+  path: "radio",
+  component: ConfigPage,
+});
+
+export const deviceRoute = createRoute({
+  getParentRoute: () => settingsRoute,
+  path: "device",
+  component: ConfigPage,
+});
+
+export const moduleRoute = createRoute({
+  getParentRoute: () => settingsRoute,
+  path: "module",
   component: ConfigPage,
 });
 
@@ -127,15 +151,22 @@ const dialogWithParamsRoute = createRoute({
   component: DialogManager,
 });
 
+const connectionsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/connections",
+  component: Connections,
+});
+
 const routeTree = rootRoute.addChildren([
   indexRoute,
   messagesRoute,
   messagesWithParamsRoute,
   mapRoute,
   mapWithParamsRoute,
-  configRoute,
+  settingsRoute.addChildren([radioRoute, deviceRoute, moduleRoute]),
   nodesRoute,
   dialogWithParamsRoute,
+  connectionsRoute,
 ]);
 
 const router = createRouter({

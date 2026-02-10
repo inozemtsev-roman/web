@@ -12,10 +12,10 @@ import commandPaletteEN from "@public/i18n/locales/en/commandPalette.json" with 
 import commonEN from "@public/i18n/locales/en/common.json" with {
   type: "json",
 };
-import dashboardEN from "@public/i18n/locales/en/dashboard.json" with {
+import configEN from "@public/i18n/locales/en/config.json" with {
   type: "json",
 };
-import deviceConfigEN from "@public/i18n/locales/en/deviceConfig.json" with {
+import connectionsEN from "@public/i18n/locales/en/connections.json" with {
   type: "json",
 };
 import dialogEN from "@public/i18n/locales/en/dialog.json" with {
@@ -53,9 +53,9 @@ const appNamespaces = [
   "channels",
   "commandPalette",
   "common",
-  "deviceConfig",
+  "config",
   "moduleConfig",
-  "dashboard",
+  "connections",
   "dialog",
   "messages",
   "nodes",
@@ -76,9 +76,9 @@ i18n.use(initReactI18next).init({
       channels: channelsEN,
       commandPalette: commandPaletteEN,
       common: commonEN,
-      deviceConfig: deviceConfigEN,
+      config: configEN,
       moduleConfig: moduleConfigEN,
-      dashboard: dashboardEN,
+      connections: connectionsEN,
       dialog: dialogEN,
       messages: messagesEN,
       nodes: nodesEN,

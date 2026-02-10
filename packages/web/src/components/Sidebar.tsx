@@ -1,10 +1,13 @@
+import { useFirstSavedConnection } from "@app/core/stores/deviceStore/selectors.ts";
 import { SidebarButton } from "@components/UI/Sidebar/SidebarButton.tsx";
 import { SidebarSection } from "@components/UI/Sidebar/SidebarSection.tsx";
 import { Spinner } from "@components/UI/Spinner.tsx";
 import { Subtle } from "@components/UI/Typography/Subtle.tsx";
 import {
   type Page,
+  useActiveConnection,
   useAppStore,
+  useDefaultConnection,
   useDevice,
   useNodeDB,
   useSidebar,
@@ -75,6 +78,14 @@ export const Sidebar = ({ children }: SidebarProps) => {
   const { t } = useTranslation("ui");
   const navigate = useNavigate({ from: "/" });
 
+  // Get the active connection from selector (connected > default > first)
+  const activeConnection =
+    useActiveConnection() ||
+    // biome-ignore lint/correctness/useHookAtTopLevel: not a react hook
+    useDefaultConnection() ||
+    // biome-ignore lint/correctness/useHookAtTopLevel: not a hook
+    useFirstSavedConnection();
+
   const pathname = useLocation({
     select: (location) => location.pathname.replace(/^\//, ""),
   });
@@ -108,9 +119,9 @@ export const Sidebar = ({ children }: SidebarProps) => {
     },
     { name: t("navigation.map"), icon: MapIcon, page: "map" },
     {
-      name: t("navigation.config"),
+      name: t("navigation.settings"),
       icon: SettingsIcon,
-      page: "config",
+      page: "settings",
     },
     {
       name: `${t("navigation.nodes")} (${displayedNodeCount})`,
@@ -196,10 +207,7 @@ export const Sidebar = ({ children }: SidebarProps) => {
             isCollapsed={isCollapsed}
             setCommandPaletteOpen={() => setCommandPaletteOpen(true)}
             setDialogOpen={() => setDialogOpen("deviceName", true)}
-            user={{
-              longName: myNode?.user?.longName ?? t("unknown.longName"),
-              shortName: myNode?.user?.shortName ?? t("unknown.shortName"),
-            }}
+            user={myNode.user}
             firmwareVersion={
               myMetadata?.firmwareVersion ?? t("unknown.notAvailable")
             }
@@ -210,6 +218,8 @@ export const Sidebar = ({ children }: SidebarProps) => {
                   ? Math.abs(myNode.deviceMetrics?.voltage)
                   : undefined,
             }}
+            connectionStatus={activeConnection?.status}
+            connectionName={activeConnection?.name}
           />
         )}
       </div>

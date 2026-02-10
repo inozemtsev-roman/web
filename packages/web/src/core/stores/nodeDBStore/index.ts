@@ -1,7 +1,6 @@
 import { create } from "@bufbuild/protobuf";
 import { featureFlags } from "@core/services/featureFlags";
 import { validateIncomingNode } from "@core/stores/nodeDBStore/nodeValidation";
-import { evictOldestEntries } from "@core/stores/utils/evictOldestEntries.ts";
 import { createStorage } from "@core/stores/utils/indexDB.ts";
 import { Protobuf, type Types } from "@meshtastic/core";
 import { produce } from "immer";
@@ -13,18 +12,24 @@ import {
 } from "zustand/middleware";
 import type { NodeError, NodeErrorType, ProcessPacketParams } from "./types.ts";
 
+const IDB_KEY_NAME = "meshtastic-nodedb-store";
 const CURRENT_STORE_VERSION = 0;
-const NODEDB_RETENTION_NUM = 10;
+const NODE_RETENTION_DAYS = 14; // Remove nodes not heard from in 14 days
 
-export interface NodeDB {
+type NodeDBData = {
+  // Persisted data
   id: number;
   myNodeNum: number | undefined;
   nodeMap: Map<number, Protobuf.Mesh.NodeInfo>;
   nodeErrors: Map<number, NodeError>;
+};
 
+export interface NodeDB extends NodeDBData {
+  // Ephemeral state (not persisted)
   addNode: (nodeInfo: Protobuf.Mesh.NodeInfo) => void;
   removeNode: (nodeNum: number) => void;
   removeAllNodes: (keepMyNode?: boolean) => void;
+  pruneStaleNodes: () => number;
   processPacket: (data: ProcessPacketParams) => void;
   addUser: (user: Types.PacketMetadata<Protobuf.Mesh.User>) => void;
   addPosition: (position: Types.PacketMetadata<Protobuf.Mesh.Position>) => void;
@@ -58,13 +63,6 @@ interface PrivateNodeDBState extends nodeDBState {
   nodeDBs: Map<number, NodeDB>;
 }
 
-type NodeDBData = {
-  id: number;
-  myNodeNum: number | undefined;
-  nodeMap: Map<number, Protobuf.Mesh.NodeInfo>;
-  nodeErrors: Map<number, NodeError>;
-};
-
 type NodeDBPersisted = {
   nodeDBs: Map<number, NodeDBData>;
 };
@@ -92,6 +90,11 @@ function nodeDBFactory(
           if (!nodeDB) {
             throw new Error(`No nodeDB found (id: ${id})`);
           }
+
+          // Check if node already exists
+          const existing = nodeDB.nodeMap.get(node.num);
+          const isNew = !existing;
+
           // Use validation to check the new node before adding
           const next = validateIncomingNode(
             node,
@@ -107,7 +110,30 @@ function nodeDBFactory(
             return;
           }
 
-          nodeDB.nodeMap = new Map(nodeDB.nodeMap).set(node.num, next);
+          // Merge with existing node data if it exists
+          const merged = existing
+            ? {
+                ...existing,
+                ...next,
+                // Preserve existing fields if new node doesn't have them
+                user: next.user ?? existing.user,
+                position: next.position ?? existing.position,
+                deviceMetrics: next.deviceMetrics ?? existing.deviceMetrics,
+              }
+            : next;
+
+          // Use the validated node's num to ensure consistency
+          nodeDB.nodeMap = new Map(nodeDB.nodeMap).set(merged.num, merged);
+
+          if (isNew) {
+            console.log(
+              `[NodeDB] Adding new node from NodeInfo packet: ${merged.num} (${merged.user?.longName || "unknown"})`,
+            );
+          } else {
+            console.log(
+              `[NodeDB] Updating existing node from NodeInfo packet: ${merged.num} (${merged.user?.longName || "unknown"})`,
+            );
+          }
         }),
       ),
 
@@ -146,6 +172,56 @@ function nodeDBFactory(
           nodeDB.nodeMap = newNodeMap;
         }),
       ),
+
+    pruneStaleNodes: () => {
+      const nodeDB = get().nodeDBs.get(id);
+      if (!nodeDB) {
+        throw new Error(`No nodeDB found (id: ${id})`);
+      }
+
+      const nowSec = Math.floor(Date.now() / 1000);
+      const cutoffSec = nowSec - NODE_RETENTION_DAYS * 24 * 60 * 60;
+      let prunedCount = 0;
+
+      set(
+        produce<PrivateNodeDBState>((draft) => {
+          const nodeDB = draft.nodeDBs.get(id);
+          if (!nodeDB) {
+            throw new Error(`No nodeDB found (id: ${id})`);
+          }
+
+          const newNodeMap = new Map<number, Protobuf.Mesh.NodeInfo>();
+
+          for (const [nodeNum, node] of nodeDB.nodeMap) {
+            // Keep myNode regardless of lastHeard
+            // Keep nodes that have been heard recently
+            // Keep nodes without lastHeard (just in case)
+            if (
+              nodeNum === nodeDB.myNodeNum ||
+              !node.lastHeard ||
+              node.lastHeard >= cutoffSec
+            ) {
+              newNodeMap.set(nodeNum, node);
+            } else {
+              prunedCount++;
+              console.log(
+                `[NodeDB] Pruning stale node ${nodeNum} (last heard ${Math.floor((nowSec - node.lastHeard) / 86400)} days ago)`,
+              );
+            }
+          }
+
+          nodeDB.nodeMap = newNodeMap;
+        }),
+      );
+
+      if (prunedCount > 0) {
+        console.log(
+          `[NodeDB] Pruned ${prunedCount} stale node(s) older than ${NODE_RETENTION_DAYS} days`,
+        );
+      }
+
+      return prunedCount;
+    },
 
     setNodeError: (nodeNum, error) =>
       set(
@@ -222,11 +298,20 @@ function nodeDBFactory(
           if (!nodeDB) {
             throw new Error(`No nodeDB found (id: ${id})`);
           }
-          const current =
-            nodeDB.nodeMap.get(user.from) ??
-            create(Protobuf.Mesh.NodeInfoSchema);
-          const updated = { ...current, user: user.data, num: user.from };
+          const current = nodeDB.nodeMap.get(user.from);
+          const isNew = !current;
+          const updated = {
+            ...(current ?? create(Protobuf.Mesh.NodeInfoSchema)),
+            user: user.data,
+            num: user.from,
+          };
           nodeDB.nodeMap = new Map(nodeDB.nodeMap).set(user.from, updated);
+
+          if (isNew) {
+            console.log(
+              `[NodeDB] Adding new node from user packet: ${user.from} (${user.data.longName || "unknown"})`,
+            );
+          }
         }),
       ),
 
@@ -237,15 +322,20 @@ function nodeDBFactory(
           if (!nodeDB) {
             throw new Error(`No nodeDB found (id: ${id})`);
           }
-          const current =
-            nodeDB.nodeMap.get(position.from) ??
-            create(Protobuf.Mesh.NodeInfoSchema);
+          const current = nodeDB.nodeMap.get(position.from);
+          const isNew = !current;
           const updated = {
-            ...current,
+            ...(current ?? create(Protobuf.Mesh.NodeInfoSchema)),
             position: position.data,
             num: position.from,
           };
           nodeDB.nodeMap = new Map(nodeDB.nodeMap).set(position.from, updated);
+
+          if (isNew) {
+            console.log(
+              `[NodeDB] Adding new node from position packet: ${position.from}`,
+            );
+          }
         }),
       ),
 
@@ -413,6 +503,8 @@ export const nodeDBInitializer: StateCreator<PrivateNodeDBState> = (
   addNodeDB: (id) => {
     const existing = get().nodeDBs.get(id);
     if (existing) {
+      // Prune stale nodes when accessing existing nodeDB
+      existing.pruneStaleNodes();
       return existing;
     }
 
@@ -420,11 +512,11 @@ export const nodeDBInitializer: StateCreator<PrivateNodeDBState> = (
     set(
       produce<PrivateNodeDBState>((draft) => {
         draft.nodeDBs = new Map(draft.nodeDBs).set(id, nodeDB);
-
-        // Enforce retention limit
-        evictOldestEntries(draft.nodeDBs, NODEDB_RETENTION_NUM);
       }),
     );
+
+    // Prune stale nodes on creation (useful when rehydrating from storage)
+    nodeDB.pruneStaleNodes();
 
     return nodeDB;
   },
@@ -442,7 +534,7 @@ export const nodeDBInitializer: StateCreator<PrivateNodeDBState> = (
 });
 
 const persistOptions: PersistOptions<PrivateNodeDBState, NodeDBPersisted> = {
-  name: "meshtastic-nodedb-store",
+  name: IDB_KEY_NAME,
   storage: createStorage<NodeDBPersisted>(),
   version: CURRENT_STORE_VERSION,
   partialize: (s): NodeDBPersisted => ({

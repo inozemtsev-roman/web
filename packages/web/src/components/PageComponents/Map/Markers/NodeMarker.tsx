@@ -16,7 +16,6 @@ export const NodeMarker = memo(function NodeMarker({
   id,
   lng,
   lat,
-  label,
   longLabel,
   tooltipLabel,
   hasError,
@@ -68,7 +67,7 @@ export const NodeMarker = memo(function NodeMarker({
               onClick={(e) => onClick(id, { originalEvent: e.nativeEvent })}
             >
               <Avatar
-                text={label}
+                nodeNum={id}
                 className={cn(
                   "border-[1.5px] border-slate-600 shadow-m shadow-slate-600",
                   avatarClassName,
