@@ -78,8 +78,8 @@ Follow the installation instructions on their home page.
    This command installs all necessary dependencies for all packages within the
    monorepo.
 3. **Install the Buf CLI**
-    Required for building `packages/protobufs`
-    https://buf.build/docs/cli/installation/
+   Required for building `packages/protobufs`
+   https://buf.build/docs/cli/installation/
 
 ### Running Projects
 
@@ -106,5 +106,5 @@ improve the stability of future releases
 ## Contributors
 
 <a href="https://github.com/meshtastic/web/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=meshtastic/web" width="100%"/>
+  <img src="https://contrib.rocks/image?repo=inozemtsev-roman/web" width="100%"/>
 </a>
